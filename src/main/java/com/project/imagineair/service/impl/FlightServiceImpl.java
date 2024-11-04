@@ -6,6 +6,7 @@ import com.project.imagineair.model.exceptions.AppExceptionV2;
 import com.project.imagineair.model.request.FlightRequest;
 import com.project.imagineair.model.request.GetAvailableFlightRequest;
 import com.project.imagineair.model.response.FlightResponse;
+import com.project.imagineair.model.response.OccupiedSeatResponse;
 import com.project.imagineair.repository.FlightRepository;
 import com.project.imagineair.service.FlightService;
 import org.apache.commons.collections.CollectionUtils;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
 
@@ -55,6 +57,24 @@ public class FlightServiceImpl implements FlightService {
     flightRepository.save(flight);
 
     FlightResponse response = mapper.map(flight, FlightResponse.class);
+
+    return response;
+  }
+
+  @Override
+  public OccupiedSeatResponse getOccupiedSeats(String flNumber, String departDate) {
+
+    Flight flight = flightRepository.findByNumberAndDepartDate(flNumber, departDate);
+
+    if (Objects.isNull(flight)) {
+      throw new AppExceptionV2(ErrorCodes.FLIGHTS_NOT_FOUND.getMessage(), ErrorCodes.FLIGHTS_NOT_FOUND);
+    }
+
+    List<String> seats = flight.getSeatsAvailability().entrySet().stream().filter(e -> e.getValue() == false)
+        .map(Map.Entry::getKey).collect(
+        Collectors.toList());
+
+    OccupiedSeatResponse response = OccupiedSeatResponse.builder().seats(seats).build();
 
     return response;
   }

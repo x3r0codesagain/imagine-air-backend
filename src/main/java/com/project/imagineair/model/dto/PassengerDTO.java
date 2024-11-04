@@ -5,6 +5,7 @@ import lombok.Data;
 
 @Data
 public class PassengerDTO {
+  private int index;
   private String salutation;
   private String givenName;
   private String surname;
@@ -12,5 +13,6 @@ public class PassengerDTO {
   private String gender;
   private String idNumber;
   private String idType;
-  private String seat;
+  private String outboundSeat;
+  private String returnSeat;
 }

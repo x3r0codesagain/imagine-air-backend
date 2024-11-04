@@ -12,7 +12,8 @@ public class PassengerRequest {
   private String gender;
   private String idNumber;
   private String idType;
-  private String seat;
+  private String outboundSeat;
+  private String returnSeat;
   private String phoneNo;
   private String email;
 }

@@ -11,22 +11,23 @@ import com.project.imagineair.model.PendingBooking;
 import com.project.imagineair.model.enums.BookingStatus;
 import com.project.imagineair.model.enums.ErrorCodes;
 import com.project.imagineair.model.exceptions.AppExceptionV2;
+import com.project.imagineair.model.request.CancelRequest;
 import com.project.imagineair.model.request.CreateBookingRequest;
-import com.project.imagineair.model.request.PassengerRequest;
 import com.project.imagineair.model.request.PaymentRequest;
 import com.project.imagineair.model.request.PendingBookingRequest;
+import com.project.imagineair.model.request.SeatAssignRequest;
 import com.project.imagineair.model.response.BookingResponse;
 import com.project.imagineair.repository.BookingCodeRepository;
 import com.project.imagineair.repository.BookingRepository;
 import com.project.imagineair.repository.FlightRepository;
 import com.project.imagineair.repository.PendingBookingRepository;
 import com.project.imagineair.service.BookingService;
-import org.apache.commons.lang3.StringUtils;
 import org.dozer.Mapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -128,10 +129,18 @@ public class BookingServiceImpl implements BookingService {
     if (Objects.isNull(pendingBooking)) {
       throw new AppExceptionV2(ErrorCodes.BOOKING_NOT_FOUND.getMessage(), ErrorCodes.BOOKING_NOT_FOUND);
     }
-
     List<Passenger> passengers =
-        request.getPassengers().stream().map(passenger -> mapper.map(passenger, Passenger.class))
+        request.getPassengers().stream()
+            .map(passenger -> mapper.map(passenger, Passenger.class))
             .collect(Collectors.toList());
+
+    int index = 1;
+
+    for (Passenger passenger : passengers) {
+      passenger.setIndex(index);
+      index++;
+    }
+
     BookingContact contact = mapper.map(request.getBookingContact(), BookingContact.class);
 
     Flight outboundFl = pendingBooking.getOutboundFlight();
@@ -194,8 +203,6 @@ public class BookingServiceImpl implements BookingService {
     bookingRepository.save(booking);
 
     BookingResponse response = mapper.map(booking, BookingResponse.class);
-//    response.setOutboundFlightNo(booking.getOutboundFlight().getNumber());
-//    response.setReturnFlightNo(booking.getReturnFlight().getNumber());
     return response;
   }
 
@@ -207,10 +214,176 @@ public class BookingServiceImpl implements BookingService {
       throw new AppExceptionV2(ErrorCodes.BOOKING_NOT_FOUND.getMessage(), ErrorCodes.BOOKING_NOT_FOUND);
     }
     BookingResponse response = mapper.map(booking, BookingResponse.class);
-//    response.setOutboundFlightNo(booking.getOutboundFlight().getNumber());
-//    response.setReturnFlightNo(booking.getReturnFlight().getNumber());
-//    response.setOrigin(booking.getOutboundFlight().getOrigin() + " (" + booking.getOutboundFlight().getOriginCode() + ")");
-//    response.setDestination(booking.getOutboundFlight().getDestination() + " (" + booking.getOutboundFlight().getArrivalCode() + ")");
+    return response;
+  }
+
+  @Override
+  public BookingResponse findMyBooking(String code, String surname) {
+    Booking booking = bookingRepository.findByBookingCode(code);
+
+    if (Objects.isNull(booking) || !BookingStatus.CONFIRMED.getName().equals(booking.getStatus()) ||
+        !booking.getBookingContact().getSurname().equals(surname)) {
+      throw new AppExceptionV2(ErrorCodes.BOOKING_NOT_FOUND.getMessage(), ErrorCodes.BOOKING_NOT_FOUND);
+    }
+    BookingResponse response = mapper.map(booking, BookingResponse.class);
+    return response;
+  }
+
+  @Override
+  public BookingResponse getUnpaidBooking(String code) {
+    Booking booking = bookingRepository.findByBookingCode(code);
+
+    if (Objects.isNull(booking) || !BookingStatus.PENDING.getName().equals(booking.getStatus())) {
+      throw new AppExceptionV2(ErrorCodes.BOOKING_NOT_FOUND.getMessage(), ErrorCodes.BOOKING_NOT_FOUND);
+    }
+    BookingResponse response = mapper.map(booking, BookingResponse.class);
+    return response;
+  }
+
+  @Override
+  public BookingResponse assignSeat(SeatAssignRequest request) {
+    Booking booking = bookingRepository.findByBookingCode(request.getBookingCode());
+
+
+    if (Objects.isNull(booking)) {
+      throw new AppExceptionV2(ErrorCodes.BOOKING_NOT_FOUND.getMessage(), ErrorCodes.BOOKING_NOT_FOUND);
+    }
+
+    Flight flight = flightRepository.findByNumberAndDepartDate(request.getFlight(), request.getDepartDate());
+
+    if (Objects.isNull(flight)) {
+      throw new AppExceptionV2(ErrorCodes.FLIGHTS_NOT_FOUND.getMessage(), ErrorCodes.FLIGHTS_NOT_FOUND);
+    }
+
+    boolean outbound = false;
+    if (booking.getOutboundFlight().getNumber().equals(flight.getNumber())) {
+      outbound = true;
+    }
+    else if (booking.getReturnFlight().getNumber().equals(flight.getNumber())) {
+      outbound = false;
+    }
+
+    Map<String, Boolean> availablility = flight.getSeatsAvailability();
+    if (flight.getSeatsAvailability().containsKey(request.getSeat())) {
+      if (!flight.getSeatsAvailability().get(request.getSeat())) {
+        throw new AppExceptionV2(ErrorCodes.SEAT_UNAVAILABLE.getMessage(), ErrorCodes.SEAT_UNAVAILABLE);
+      }
+    }
+    Passenger passenger = booking.getPassengers().stream()
+        .filter(pax -> pax.getIndex() == request.getIndex()).findFirst().get();
+
+    if (outbound && !"-".equals(passenger.getOutboundSeat())) {
+      availablility.put(passenger.getOutboundSeat(), true);
+    }
+    else if (!outbound && !"-".equals(passenger.getReturnSeat())) {
+      availablility.put(passenger.getReturnSeat(), true);
+    }
+    availablility.put(request.getSeat(), false);
+
+    if (outbound) {
+      booking.getPassengers().stream().filter(pax ->
+          pax.getIndex() == request.getIndex()).findFirst().get().setOutboundSeat(request.getSeat());
+    }
+    else if (!outbound) {
+      booking.getPassengers().stream().filter(pax ->
+          pax.getIndex() == request.getIndex()).findFirst().get().setReturnSeat(request.getSeat());
+    }
+
+    flight.setSeatsAvailability(availablility);
+
+    Date now = new Date();
+    flight.setUpdatedDate(now);
+    booking.setUpdatedDate(now);
+
+    flightRepository.save(flight);
+    bookingRepository.save(booking);
+
+    BookingResponse response = mapper.map(booking, BookingResponse.class);
+
+    return response;
+  }
+
+  @Override
+  public BookingResponse cancelBooking(CancelRequest request) {
+    Booking booking = bookingRepository.findByBookingCode(request.getBookingCode());
+    Date now = new Date();
+
+
+    if (Objects.isNull(booking) || BookingStatus.CANCELLED.getName().equals(booking.getStatus())) {
+      throw new AppExceptionV2(ErrorCodes.BOOKING_NOT_FOUND.getMessage(),
+          ErrorCodes.BOOKING_NOT_FOUND);
+    }
+
+    Flight outboundFlight =
+        flightRepository.findByNumberAndDepartDate(booking.getOutboundFlight().getNumber(),
+            booking.getOutboundFlight().getDepartDate());
+
+    if (Objects.isNull(outboundFlight)) {
+      throw new AppExceptionV2(ErrorCodes.FLIGHTS_NOT_FOUND.getMessage(),
+          ErrorCodes.FLIGHTS_NOT_FOUND);
+    }
+
+    Map<String, Boolean> outboundFlightSeatsAvailability = outboundFlight.getSeatsAvailability();
+
+    booking.setStatus(BookingStatus.CANCELLED.getName());
+
+    booking.getPassengers().forEach(passenger -> {
+      String currSeat = passenger.getOutboundSeat();
+
+      if (!"-".equals(currSeat)) {
+        outboundFlightSeatsAvailability.put(currSeat, true);
+      }
+    });
+
+    outboundFlight.setSeatsAvailability(outboundFlightSeatsAvailability);
+
+    Map<String, Integer> seatCount = outboundFlight.getAvailableSeats();
+    int newSeats = seatCount.get(booking.getTravelClass().toLowerCase());
+    newSeats = newSeats + booking.getTotalPax();
+    seatCount.put(booking.getTravelClass().toLowerCase(), newSeats);
+    outboundFlight.setAvailableSeats(seatCount);
+    outboundFlight.setUpdatedDate(now);
+
+
+    if (Objects.nonNull(booking.getReturnFlight())) {
+      Flight returnFlight =
+          flightRepository.findByNumberAndDepartDate(booking.getReturnFlight().getNumber(),
+              booking.getReturnFlight().getDepartDate());
+
+      if (Objects.isNull(returnFlight)) {
+        throw new AppExceptionV2(ErrorCodes.FLIGHTS_NOT_FOUND.getMessage(),
+            ErrorCodes.FLIGHTS_NOT_FOUND);
+      }
+
+      Map<String, Boolean> returnFlightSeatsAvailability = returnFlight.getSeatsAvailability();
+      booking.getPassengers().forEach(passenger -> {
+        String currSeat = passenger.getReturnSeat();
+
+        if (!"-".equals(currSeat)) {
+          returnFlightSeatsAvailability.put(currSeat, true);
+        }
+      });
+
+      returnFlight.setSeatsAvailability(returnFlightSeatsAvailability);
+
+      Map<String, Integer> returnSeats = returnFlight.getAvailableSeats();
+      int seatsCount = returnSeats.get(booking.getTravelClass().toLowerCase());
+      seatsCount = seatsCount + booking.getTotalPax();
+      returnSeats.put(booking.getTravelClass().toLowerCase(), seatsCount);
+
+      returnFlight.setAvailableSeats(returnSeats);
+      returnFlight.setUpdatedDate(now);
+
+      flightRepository.save(returnFlight);
+    }
+
+    booking.setUpdatedDate(now);
+
+
+    bookingRepository.save(booking);
+    flightRepository.save(outboundFlight);
+
+    BookingResponse response = mapper.map(booking, BookingResponse.class);
     return response;
   }
 

@@ -8,6 +8,6 @@ import lombok.Getter;
 public enum BookingStatus {
   PENDING("pending"),
   CONFIRMED("confirmed"),
-  cancelled("cancelled");
+  CANCELLED("cancelled");
   private String name;
 }
