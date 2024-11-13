@@ -15,4 +15,5 @@ public class DestinationResponse extends BaseResponse {
   private String IATACode;
   private int bookingCount;
   private int startsFrom;
+  private String imageUrl;
 }

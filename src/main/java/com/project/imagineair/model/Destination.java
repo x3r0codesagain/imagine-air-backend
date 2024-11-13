@@ -17,4 +17,5 @@ public class Destination extends BaseMongoEntity {
   private String IATACode;
   private int bookingCount;
   private int startsFrom;
+  private String imageUrl;
 }

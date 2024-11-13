@@ -68,4 +68,18 @@ public class FlightController {
           HttpStatus.INTERNAL_SERVER_ERROR.name(), false, null);
     }
   }
+
+  @PostMapping("/admin/create/bulk")
+  public RestListResponse<FlightResponse> createFlights(@RequestParam int days) {
+    try {
+      List<FlightResponse> responses = flightService.addFlights(days);
+      return new RestListResponse<>(null, null, true, responses);
+    } catch (AppExceptionV2 appExceptionV2) {
+      return new RestListResponse<>(appExceptionV2.getMessage(),
+          appExceptionV2.getCode().name(), false, null);
+    } catch (Exception e) {
+      return new RestListResponse<>("Internal Server Error",
+          HttpStatus.INTERNAL_SERVER_ERROR.name(), false, null);
+    }
+  }
 }
