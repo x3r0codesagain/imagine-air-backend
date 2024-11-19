@@ -17301,4 +17301,4 @@ Response:
 }
 ```
 
-7. You should setup your own MongoDB atalas or Local MongoDB Please follow .env.example file
+7. You should setup your own MongoDB atlas or Local MongoDB Please follow .env.example file
